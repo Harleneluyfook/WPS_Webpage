@@ -1,170 +1,275 @@
+"""
+Weighted Priority Scheduler (WPS) — Streamlit
+Baguio City Emergency Operations Center
+Matches the original React/Vite layout: light theme, collapsible sidebar, 6-page nav
+"""
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import plotly.graph_objects as go
 import time
 import io
-import copy
 
 # ─────────────────────────────────────────────────────────────
 # PAGE CONFIG
 # ─────────────────────────────────────────────────────────────
 
 st.set_page_config(
-    page_title="Weighted Priority Scheduler",
+    page_title="WPS · Baguio City EOC",
     page_icon=None,
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 # ─────────────────────────────────────────────────────────────
-# CSS
+# CSS  — light theme matching original React app
 # ─────────────────────────────────────────────────────────────
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-html, body, [class*="css"] { font-family: 'IBM Plex Sans', sans-serif; }
+html, body, [class*="css"] {
+    font-family: 'Inter', sans-serif;
+}
 
-.stApp { background: #0d1117; color: #e6edf3; }
+/* ── App background ── */
+.stApp { background: #f8fafc; color: #0f172a; }
+.main .block-container { padding-top: 1.5rem; padding-bottom: 2rem; max-width: 1400px; }
 
 /* ── Sidebar ── */
 [data-testid="stSidebar"] {
-    background: #090e14 !important;
-    border-right: 1px solid #21262d;
+    background: #0f172a !important;
+    border-right: none !important;
 }
-[data-testid="stSidebar"] * { color: #8b949e !important; }
-[data-testid="stSidebar"] h3 { color: #e6edf3 !important; font-size: 1rem !important; }
-[data-testid="stSidebar"] .stRadio label { font-size: 13px; letter-spacing: 0.3px; }
+[data-testid="stSidebar"] * { color: #94a3b8 !important; }
+[data-testid="stSidebar"] .stRadio > label { display: none; }
+[data-testid="stSidebar"] .stRadio [data-testid="stMarkdownContainer"] p {
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.2px !important;
+}
 
-/* Fix the sidebar collapse/expand arrow button visibility */
+/* Sidebar toggle arrow — always visible on dark bg */
 [data-testid="collapsedControl"] {
-    background: #161b22 !important;
-    border: 1px solid #30363d !important;
+    color: #94a3b8 !important;
+    background: #1e293b !important;
+    border: 1px solid #334155 !important;
     border-radius: 6px !important;
-    color: #8b949e !important;
 }
-[data-testid="collapsedControl"]:hover { border-color: #58a6ff !important; }
-section[data-testid="stSidebar"] > div > div > button {
-    background: #161b22 !important;
-    border: 1px solid #30363d !important;
-    color: #8b949e !important;
+[data-testid="collapsedControl"]:hover {
+    border-color: #3b82f6 !important;
+    color: #3b82f6 !important;
+}
+button[data-testid="baseButton-header"] {
+    color: #94a3b8 !important;
 }
 
 /* ── Metrics ── */
 [data-testid="stMetric"] {
-    background: #161b22;
-    border: 1px solid #21262d;
-    border-radius: 8px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
     padding: 20px 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 [data-testid="stMetricValue"] {
-    font-family: 'IBM Plex Mono', monospace !important;
-    font-size: 1.5rem !important;
-    font-weight: 500 !important;
-    color: #e6edf3 !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 1.6rem !important;
+    font-weight: 900 !important;
+    color: #0f172a !important;
 }
 [data-testid="stMetricLabel"] {
-    font-size: 11px !important;
+    font-size: 10px !important;
     text-transform: uppercase !important;
-    letter-spacing: 1.2px !important;
-    color: #8b949e !important;
+    letter-spacing: 1.5px !important;
+    color: #94a3b8 !important;
+    font-weight: 600 !important;
 }
 
 /* ── Headings ── */
-h1 { font-size: 1.4rem !important; font-weight: 600 !important; color: #e6edf3 !important; }
-h2 { font-size: 1.2rem !important; font-weight: 600 !important; color: #e6edf3 !important; }
-h3 { font-size: 1rem   !important; font-weight: 500 !important; color: #c9d1d9 !important; }
-h4 { font-size: 0.9rem !important; font-weight: 500 !important; color: #8b949e !important;
-     text-transform: uppercase; letter-spacing: 1px; }
+h1, h2, h3, h4 { color: #0f172a !important; }
 
 /* ── Buttons ── */
 .stButton > button {
-    background: #21262d; color: #e6edf3;
-    border: 1px solid #30363d; border-radius: 6px;
-    font-family: 'IBM Plex Sans', sans-serif;
-    font-size: 13px; font-weight: 500;
+    background: #ffffff; color: #374151;
+    border: 1px solid #e2e8f0; border-radius: 8px;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px; font-weight: 600;
+    padding: 8px 16px;
     transition: all 0.15s ease;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
 }
-.stButton > button:hover { background: #30363d; border-color: #58a6ff; color: #58a6ff; }
+.stButton > button:hover {
+    background: #f8fafc; border-color: #94a3b8;
+}
 .stButton > button[kind="primary"] {
-    background: #1f6feb !important; border-color: #388bfd !important; color: #fff !important;
+    background: #0f172a !important; color: #fff !important;
+    border-color: #0f172a !important;
 }
-.stButton > button[kind="primary"]:hover { background: #388bfd !important; }
+.stButton > button[kind="primary"]:hover {
+    background: #1e293b !important;
+}
 
 /* ── Inputs ── */
-[data-testid="stSelectbox"] > div > div,
-[data-testid="stNumberInput"] input,
-[data-testid="stTextInput"] input,
-[data-testid="stFileUploader"],
-textarea {
-    background: #161b22 !important;
-    border: 1px solid #30363d !important;
-    border-radius: 6px !important;
-    color: #e6edf3 !important;
+[data-testid="stSelectbox"] > div > div {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 8px !important;
+    color: #0f172a !important;
 }
-input[type="number"] { background: #161b22 !important; color: #e6edf3 !important; }
-label { color: #8b949e !important; font-size: 12px !important; }
+input[type="number"], [data-testid="stNumberInput"] input {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 8px !important;
+    color: #0f172a !important;
+}
+[data-testid="stTextInput"] input {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 8px !important;
+    color: #0f172a !important;
+}
+label { color: #64748b !important; font-size: 12px !important; font-weight: 500 !important; }
 
-/* ── Tables / Dataframes ── */
-hr { border-color: #21262d !important; }
-[data-testid="stDataFrame"] { border: 1px solid #21262d; border-radius: 8px; overflow: hidden; }
+/* ── Divider ── */
+hr { border-color: #e2e8f0 !important; }
+
+/* ── Dataframe ── */
+[data-testid="stDataFrame"] {
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
 
 /* ── Tabs ── */
-.stTabs [data-baseweb="tab-list"] { background: transparent; border-bottom: 1px solid #21262d; gap: 0; }
-.stTabs [data-baseweb="tab"] {
-    background: transparent; color: #8b949e;
-    font-size: 13px; font-weight: 500; letter-spacing: 0.3px;
-    padding: 8px 20px; border-bottom: 2px solid transparent;
+.stTabs [data-baseweb="tab-list"] {
+    background: transparent;
+    border-bottom: 1px solid #e2e8f0;
+    gap: 0;
 }
-.stTabs [aria-selected="true"] { color: #58a6ff !important; border-bottom-color: #58a6ff !important; }
+.stTabs [data-baseweb="tab"] {
+    background: transparent; color: #94a3b8;
+    font-size: 13px; font-weight: 600;
+    letter-spacing: 0.2px; padding: 10px 20px;
+    border-bottom: 2px solid transparent;
+}
+.stTabs [aria-selected="true"] {
+    color: #0f172a !important;
+    border-bottom-color: #0f172a !important;
+}
 
 /* ── Alerts ── */
-.stAlert { background: #161b22 !important; border: 1px solid #30363d !important; border-radius: 8px !important; }
-[data-testid="stFileUploadDropzone"] { background: #161b22 !important; border: 1px dashed #30363d !important; border-radius: 8px !important; }
+.stAlert {
+    border-radius: 12px !important;
+    border: 1px solid #e2e8f0 !important;
+}
+[data-testid="stFileUploadDropzone"] {
+    background: #f8fafc !important;
+    border: 1px dashed #cbd5e1 !important;
+    border-radius: 12px !important;
+}
 
-/* ── Custom components ── */
-.section-label {
-    font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px;
-    color: #8b949e; margin-bottom: 12px; margin-top: 4px;
+/* ── Custom cards ── */
+.hero-card {
+    background: #0f172a; color: #fff;
+    border-radius: 20px; padding: 28px 32px;
+    position: relative; overflow: hidden;
+    margin-bottom: 8px;
 }
+.hero-card h3 { color: #fff !important; font-size: 1.4rem; font-weight: 800; margin-bottom: 8px; }
+.hero-card p  { color: #94a3b8; font-size: 13px; line-height: 1.6; max-width: 520px; }
+.hero-badge {
+    background: #1e293b; border: 1px solid #334155;
+    border-radius: 12px; padding: 12px 20px; text-align: center;
+}
+.hero-badge .label { font-size: 9px; color: #64748b; text-transform: uppercase; letter-spacing: 1.5px; }
+.hero-badge .value { font-size: 1.1rem; font-weight: 800; color: #fff; margin-top: 2px; }
+
 .stat-card {
-    background: #161b22; border: 1px solid #21262d;
-    border-radius: 8px; padding: 16px 20px; height: 100%;
+    background: #ffffff; border: 1px solid #e2e8f0;
+    border-radius: 16px; padding: 20px 22px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    height: 100%;
 }
+.stat-card .label {
+    font-size: 9px; text-transform: uppercase; letter-spacing: 1.5px;
+    color: #94a3b8; font-weight: 700; margin-bottom: 6px;
+}
+.stat-card .name {
+    font-size: 1rem; font-weight: 700; color: #0f172a;
+    margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.stat-card .sub { font-size: 11px; color: #94a3b8; margin-bottom: 12px; }
+.stat-card .nums { display: flex; gap: 16px; }
+.stat-card .nums .n-label { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; }
+.stat-card .nums .n-val { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #374151; font-weight: 500; }
+
+.queue-row {
+    background: #fff; border: 1px solid #e2e8f0;
+    border-radius: 12px; padding: 14px 18px;
+    display: flex; align-items: center; justify-content: space-between;
+    transition: border-color 0.15s ease; margin-bottom: 6px;
+    cursor: pointer;
+}
+.queue-row:hover { border-color: #94a3b8; }
+
+.badge {
+    display: inline-block; padding: 2px 10px; border-radius: 20px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+}
+.badge-highest  { background: #fef2f2; color: #dc2626; }
+.badge-urgent   { background: #fff7ed; color: #ea580c; }
+.badge-moderate { background: #eff6ff; color: #3b82f6; }
+.badge-low      { background: #f8fafc; color: #94a3b8; }
+
+.action-card {
+    background: #fff7ed; border: 1px solid #fed7aa;
+    border-radius: 14px; padding: 18px 20px;
+}
+.action-card h5 { color: #9a3412 !important; font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+.action-card p  { color: #c2410c; font-size: 12px; line-height: 1.5; margin: 0; }
+
+.ops-card {
+    background: #f8fafc; border: 1px solid #e2e8f0;
+    border-radius: 14px; padding: 18px 20px;
+}
+.ops-row { display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; padding: 4px 0; }
+.ops-row .ops-label { color: #94a3b8; }
+.ops-row .ops-val   { font-weight: 700; color: #0f172a; }
+
+.progress-bar-bg { background: #e2e8f0; border-radius: 999px; height: 6px; margin-top: 8px; overflow: hidden; }
+.progress-bar-fill { background: #0f172a; height: 100%; border-radius: 999px; transition: width 0.4s ease; }
+
+.section-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px;
+    color: #94a3b8; font-weight: 700; margin-bottom: 10px;
+}
+
 .info-banner {
-    background: #0e2030; border: 1px solid #1a4a7a;
-    border-radius: 8px; padding: 10px 16px;
-    font-size: 13px; color: #58a6ff; margin-bottom: 16px;
+    background: #eff6ff; border: 1px solid #bfdbfe;
+    border-radius: 10px; padding: 10px 16px;
+    font-size: 12px; color: #1d4ed8; margin-bottom: 14px;
 }
-.entry-row {
-    background: #161b22; border: 1px solid #21262d;
-    border-radius: 8px; padding: 14px 18px; margin-bottom: 8px;
-}
-.urgency-critical { color: #f85149; font-weight: 600; font-size: 11px;
-    text-transform: uppercase; letter-spacing: 0.5px; }
-.urgency-high     { color: #e3b341; font-weight: 600; font-size: 11px;
-    text-transform: uppercase; letter-spacing: 0.5px; }
-.urgency-moderate { color: #58a6ff; font-weight: 600; font-size: 11px;
-    text-transform: uppercase; letter-spacing: 0.5px; }
-.urgency-low      { color: #8b949e; font-weight: 600; font-size: 11px;
-    text-transform: uppercase; letter-spacing: 0.5px; }
 
 #MainMenu, footer, header { visibility: hidden; }
 </style>
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────
-# REAL DATASET  (Baguio City EOC — embedded, no upload needed)
+# REAL DATASET
 # ─────────────────────────────────────────────────────────────
 
-REAL_CSV = """Disaster,Baranagy,Affected Families,Casualties,Damaged Houses
+REAL_CSV = """Disaster,Barangay,Affected Families,Casualties,Damaged Houses
 SW Monsoon (2025),Irisan,1,0,0
 SW Monsoon (2025),Outlook Drive,1,0,0
 Continuous Rain (2025),Loakan Liwanag,1,0,0
 Continuous Rain (2025),Loakan Proper,2,0,0
-ST Uwan (2025),Atok trail,3,0,3
+ST Uwan (2025),Atok Trail,3,0,3
 ST Uwan (2025),Bakakeng Central,10,0,3
 ST Uwan (2025),Bakakeng Norte/Sur,1,0,1
 ST Uwan (2025),BGH Compound,15,0,0
@@ -353,7 +458,7 @@ TS Paeng,Upper Quezon Hill,1,0,0
 # HELPERS
 # ─────────────────────────────────────────────────────────────
 
-def normalize_min_max(series: pd.Series) -> pd.Series:
+def normalize_mm(series: pd.Series) -> pd.Series:
     lo, hi = series.min(), series.max()
     if hi == lo:
         return pd.Series([0.5] * len(series), index=series.index)
@@ -361,30 +466,37 @@ def normalize_min_max(series: pd.Series) -> pd.Series:
 
 
 def run_wsm(df: pd.DataFrame):
-    """Run WSM algorithm. Accepts df with columns: disaster, barangay,
-    Affected Families, Casualties, Damaged Houses."""
     results, perf = [], []
-    start = time.perf_counter()
-    for d_name, group in df.groupby("disaster"):
-        group = group.copy()
-        t0 = time.perf_counter()
-        group["norm_families"]   = normalize_min_max(group["Affected Families"])
-        group["norm_casualties"] = normalize_min_max(group["Casualties"])
-        group["norm_damaged"]    = normalize_min_max(group["Damaged Houses"])
-        group["priority_score"]  = (
-            group["norm_families"] + group["norm_casualties"] + group["norm_damaged"]
-        ) / 3
-        group["score_pct"] = (group["priority_score"] * 100).round(2)
-        group = group.sort_values("priority_score", ascending=False)
-        group["rank"] = range(1, len(group) + 1)
-        perf.append({
-            "Disaster":  d_name,
-            "Records":   len(group),
-            "Time (ms)": round((time.perf_counter() - t0) * 1000, 6),
-        })
-        results.append(group)
-    total_ms = (time.perf_counter() - start) * 1000
+    t_start = time.perf_counter()
+    for d_name, grp in df.groupby("Disaster"):
+        grp = grp.copy()
+        t0  = time.perf_counter()
+        grp["norm_fam"] = normalize_mm(grp["Affected Families"])
+        grp["norm_cas"] = normalize_mm(grp["Casualties"])
+        grp["norm_hse"] = normalize_mm(grp["Damaged Houses"])
+        grp["score"]    = (grp["norm_fam"] + grp["norm_cas"] + grp["norm_hse"]) / 3
+        grp["score_pct"]= (grp["score"] * 100).round(2)
+        grp = grp.sort_values(["score","Casualties"], ascending=False)
+        grp["rank"] = range(1, len(grp) + 1)
+        perf.append({"Disaster": d_name, "Records": len(grp),
+                     "Time (ms)": round((time.perf_counter() - t0) * 1000, 6)})
+        results.append(grp)
+    total_ms = (time.perf_counter() - t_start) * 1000
     return pd.concat(results, ignore_index=True), pd.DataFrame(perf), total_ms
+
+
+def urgency(score: float):
+    if score >= 0.7: return "Highest",  "badge-highest",  "#dc2626"
+    if score >= 0.4: return "Urgent",   "badge-urgent",   "#ea580c"
+    if score >= 0.1: return "Moderate", "badge-moderate", "#3b82f6"
+    return              "Low",      "badge-low",      "#94a3b8"
+
+
+def recommendation(score: float) -> str:
+    if score >= 0.7: return "Immediate response (within 24 hours)"
+    if score >= 0.4: return "Urgent (24–48 hours)"
+    if score >= 0.1: return "Scheduled (2–3 days)"
+    return "Monitoring / delayed response"
 
 
 def jaccard(a: set, b: set) -> float:
@@ -392,623 +504,597 @@ def jaccard(a: set, b: set) -> float:
     return len(a & b) / len(u) if u else 0.0
 
 
-def urgency_label(score: float) -> str:
-    if score >= 70: return "Critical"
-    if score >= 40: return "High"
-    if score >= 10: return "Moderate"
-    return "Low"
-
-
-def urgency_color(label: str) -> str:
-    return {"Critical":"#f85149","High":"#e3b341","Moderate":"#58a6ff","Low":"#8b949e"}.get(label,"#8b949e")
-
-
-PLOTLY_BASE = dict(
+PBASE = dict(
     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-    font_color="#8b949e", font_family="IBM Plex Sans",
-    title_font_color="#e6edf3", title_font_size=14,
-    xaxis=dict(gridcolor="#21262d", zerolinecolor="#21262d", linecolor="#21262d"),
-    yaxis=dict(gridcolor="#21262d", zerolinecolor="#21262d", linecolor="#21262d"),
-    legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor="#21262d"),
+    font_color="#64748b", font_family="Inter",
+    title_font_color="#0f172a", title_font_size=14,
+    xaxis=dict(gridcolor="#f1f5f9", zerolinecolor="#e2e8f0", linecolor="#e2e8f0"),
+    yaxis=dict(gridcolor="#f1f5f9", zerolinecolor="#e2e8f0", linecolor="#e2e8f0"),
+    legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor="#e2e8f0"),
     margin=dict(l=20, r=20, t=50, b=20),
 )
-BLUE_SCALE   = [[0.0,"#1a2332"],[0.33,"#1f3a5f"],[0.66,"#1a5fa3"],[1.0,"#58a6ff"]]
-REQUIRED_COLS = {"disaster","barangay","Affected Families","Casualties","Damaged Houses"}
+BLUES = [[0.0,"#eff6ff"],[0.33,"#93c5fd"],[0.66,"#3b82f6"],[1.0,"#1d4ed8"]]
 
 # ─────────────────────────────────────────────────────────────
-# SESSION STATE  — keeps assessment additions across reruns
+# SESSION STATE
 # ─────────────────────────────────────────────────────────────
 
 if "added_entries" not in st.session_state:
-    st.session_state.added_entries = []   # list of dicts
+    st.session_state.added_entries = []
 
-def load_base_df() -> pd.DataFrame:
-    """Load and normalise the embedded real dataset."""
+if "page" not in st.session_state:
+    st.session_state.page = "Dashboard"
+
+# ─────────────────────────────────────────────────────────────
+# LOAD DATA
+# ─────────────────────────────────────────────────────────────
+
+def load_base() -> pd.DataFrame:
     df = pd.read_csv(io.StringIO(REAL_CSV))
-    # The CSV header uses 'Baranagy' (typo) — handle both
-    if "Baranagy" in df.columns:
-        df.rename(columns={"Baranagy": "barangay"}, inplace=True)
-    if "Disaster" in df.columns:
-        df.rename(columns={"Disaster": "disaster"}, inplace=True)
     for col in ["Affected Families", "Casualties", "Damaged Houses"]:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
-    df["disaster"] = df["disaster"].astype(str).str.strip()
-    df["barangay"] = df["barangay"].astype(str).str.strip()
+    df["Disaster"] = df["Disaster"].astype(str).str.strip()
+    df["Barangay"] = df["Barangay"].astype(str).str.strip()
     return df
 
 
-def build_working_df() -> pd.DataFrame:
-    """Combine base dataset with any admin-added entries."""
-    base = load_base_df()
+def get_df() -> pd.DataFrame:
+    base = load_base()
     if st.session_state.added_entries:
         added = pd.DataFrame(st.session_state.added_entries)
         return pd.concat([base, added], ignore_index=True)
     return base
 
 # ─────────────────────────────────────────────────────────────
-# SIDEBAR
+# SIDEBAR  — dark, matches original React sidebar exactly
 # ─────────────────────────────────────────────────────────────
+
+NAV_ITEMS = [
+    ("Dashboard",           "dashboard"),
+    ("Assessment Input",    "assessment"),
+    ("Priority Queue",      "queue"),
+    ("Analytics",           "analytics"),
+    ("Algorithm Assessment","evaluation"),
+    ("How WPS Works",       "how-it-works"),
+]
 
 with st.sidebar:
-    st.markdown("### WPS")
-    st.caption("Weighted Priority Scheduler")
-    st.markdown("---")
-    page = st.radio(
-        "Module",
-        [
-            "Dashboard",
-            "Assessment Input",
-            "Priority Queue",
-            "Analytics",
-            "Evaluation",
-            "How It Works",
-        ],
-        label_visibility="collapsed",
-    )
-    st.markdown("---")
+    # Logo block
+    st.markdown("""
+    <div style="display:flex;align-items:center;gap:12px;padding:8px 4px 20px 4px;
+                border-bottom:1px solid #1e293b;margin-bottom:16px">
+        <div style="width:40px;height:40px;background:#2563eb;border-radius:10px;
+                    display:flex;align-items:center;justify-content:center;
+                    font-weight:900;color:#fff;font-size:18px;flex-shrink:0">W</div>
+        <div>
+            <div style="font-size:15px;font-weight:800;color:#fff;line-height:1">WPS</div>
+            <div style="font-size:9px;color:#475569;text-transform:uppercase;
+                        letter-spacing:2px;margin-top:2px">Baguio City Ops</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # Data source toggle
-    use_upload = st.toggle("Upload custom CSV instead", value=False)
-    uploaded_file = None
-    if use_upload:
-        uploaded_file = st.file_uploader(
-            "Upload CSV",
-            type=["csv"],
-            label_visibility="collapsed",
-            help="Required columns: disaster, barangay, Affected Families, Casualties, Damaged Houses",
-        )
-
-    st.markdown("---")
-    st.caption("Baguio City EOC · Admin")
-
-# ─────────────────────────────────────────────────────────────
-# HEADER
-# ─────────────────────────────────────────────────────────────
-
-st.markdown("## Weighted Priority Scheduler")
-st.markdown(
-    '<p class="section-label">Baguio City EOC · Multi-criteria disaster response prioritization</p>',
-    unsafe_allow_html=True,
-)
-
-# ─────────────────────────────────────────────────────────────
-# RESOLVE ACTIVE DATASET
-# ─────────────────────────────────────────────────────────────
-
-if use_upload and uploaded_file is not None:
-    try:
-        df_raw = pd.read_csv(uploaded_file)
-        # Normalise column names
-        col_map = {}
-        for c in df_raw.columns:
-            cl = c.strip().lower()
-            if cl in ("baranagy","barangay","name"): col_map[c] = "barangay"
-            elif cl in ("disaster","event"):         col_map[c] = "disaster"
-        df_raw.rename(columns=col_map, inplace=True)
-        missing = REQUIRED_COLS - set(df_raw.columns)
-        if missing:
-            st.error(f"Missing columns in uploaded CSV: {', '.join(sorted(missing))}")
-            st.stop()
-        for col in ["Affected Families","Casualties","Damaged Houses"]:
-            df_raw[col] = pd.to_numeric(df_raw[col], errors="coerce").fillna(0).astype(int)
-        df_raw["disaster"] = df_raw["disaster"].astype(str).str.strip()
-        df_raw["barangay"] = df_raw["barangay"].astype(str).str.strip()
-        df = df_raw
-    except Exception as e:
-        st.error(f"Could not parse CSV: {e}")
-        st.stop()
-else:
-    df = build_working_df()
-    if page != "Assessment Input":
+    # Nav buttons
+    for label, key in NAV_ITEMS:
+        active = st.session_state.page == label
+        bg     = "#2563eb" if active else "transparent"
+        fg     = "#ffffff" if active else "#94a3b8"
+        border = "none"
         st.markdown(
-            '<div class="info-banner">Showing official Baguio City EOC dataset '
-            f'({len(df)} records · {df["disaster"].nunique()} disaster events). '
-            'Use "Assessment Input" to add new entries, or toggle "Upload custom CSV" in the sidebar.</div>',
+            f"""<div style="margin-bottom:2px">
+            <button onclick="window.location.href=''" id="nav_{key}"
+                style="width:100%;text-align:left;padding:10px 14px;border-radius:9px;
+                       background:{bg};color:{fg};border:{border};cursor:pointer;
+                       font-size:13px;font-weight:{'600' if active else '500'};
+                       font-family:Inter,sans-serif;transition:all 0.15s">
+                {label}
+            </button></div>""",
             unsafe_allow_html=True,
         )
+        if st.button(label, key=f"nav_{key}_btn",
+                     use_container_width=True,
+                     help=f"Go to {label}"):
+            st.session_state.page = label
+            st.rerun()
 
-# Run WSM
-df_final, perf_df, total_ms = run_wsm(df)
-
-# ═════════════════════════════════════════════════════════════
-# PAGES
-# ═════════════════════════════════════════════════════════════
-
-# ─────────────────────────────────────────────────────────────
-# DASHBOARD
-# ─────────────────────────────────────────────────────────────
-
-if page == "Dashboard":
-
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Disaster Events",  df_final["disaster"].nunique())
-    c2.metric("Total Records",    len(df_final))
-    c3.metric("Processing Time",  f"{total_ms:.4f} ms")
-    c4.metric("Avg per Record",   f"{total_ms / len(df_final):.6f} ms")
-
+    st.markdown("<div style='margin-top:auto'></div>", unsafe_allow_html=True)
     st.markdown("---")
-
-    # Highest priority callout
-    top     = df_final.iloc[0]
-    top_urg = urgency_label(top["score_pct"])
-    top_col = urgency_color(top_urg)
-
-    ca, cb = st.columns([3, 1])
-    with ca:
-        st.markdown(
-            f"**Highest Priority Barangay** &nbsp;"
-            f"<span style='background:#1a2332;color:{top_col};border:1px solid {top_col};"
-            f"padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600;"
-            f"letter-spacing:0.5px;text-transform:uppercase'>{top_urg}</span>",
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            f"<span style='font-family:IBM Plex Mono;font-size:2rem;color:#e6edf3;"
-            f"font-weight:600'>{top['barangay']}</span>"
-            f"&nbsp;&nbsp;<span style='color:#8b949e;font-size:1rem'>"
-            f"{top['disaster']} &nbsp;·&nbsp; Score {top['score_pct']:.2f}%</span>",
-            unsafe_allow_html=True,
-        )
-    with cb:
-        st.metric("Score", f"{top['score_pct']:.2f}%")
-
-    st.markdown("---")
-
-    # Per-disaster summary cards (up to 4 per row)
-    disasters = list(df_final["disaster"].unique())
-    for row_start in range(0, len(disasters), 4):
-        row_d = disasters[row_start:row_start + 4]
-        cols  = st.columns(len(row_d))
-        for i, d in enumerate(row_d):
-            sub   = df_final[df_final["disaster"] == d]
-            top_b = sub.iloc[0]
-            urg   = urgency_label(top_b["score_pct"])
-            col   = urgency_color(urg)
-            with cols[i]:
-                st.markdown(
-                    f'<div class="stat-card">'
-                    f'<div style="font-size:10px;text-transform:uppercase;letter-spacing:1.2px;'
-                    f'color:#8b949e;margin-bottom:6px">{d}</div>'
-                    f'<div style="font-size:1rem;font-family:IBM Plex Mono;color:#e6edf3;'
-                    f'font-weight:600;margin-bottom:4px">{top_b["barangay"]}</div>'
-                    f'<div style="font-size:11px;margin-bottom:10px">'
-                    f'<span style="color:{col};font-weight:600;text-transform:uppercase;'
-                    f'font-size:10px;letter-spacing:0.5px">{urg}</span>'
-                    f'&nbsp;·&nbsp;<span style="color:#8b949e">Score {top_b["score_pct"]:.1f}%</span>'
-                    f'</div>'
-                    f'<div style="display:flex;gap:14px;font-size:11px">'
-                    f'<div><div style="color:#8b949e;text-transform:uppercase;font-size:9px;'
-                    f'letter-spacing:1px">Records</div>'
-                    f'<div style="font-family:IBM Plex Mono;color:#c9d1d9">{len(sub)}</div></div>'
-                    f'<div><div style="color:#8b949e;text-transform:uppercase;font-size:9px;'
-                    f'letter-spacing:1px">Casualties</div>'
-                    f'<div style="font-family:IBM Plex Mono;color:#c9d1d9">{sub["Casualties"].sum()}</div></div>'
-                    f'<div><div style="color:#8b949e;text-transform:uppercase;font-size:9px;'
-                    f'letter-spacing:1px">Families</div>'
-                    f'<div style="font-family:IBM Plex Mono;color:#c9d1d9">{sub["Affected Families"].sum()}</div></div>'
-                    f'</div></div>',
-                    unsafe_allow_html=True,
-                )
-        st.markdown("")
-
-    st.markdown("---")
-    st.markdown("#### Top Priority Rankings")
-
-    df_final["Urgency"] = df_final["score_pct"].apply(urgency_label)
-    show_df = df_final[[
-        "disaster","rank","barangay","score_pct",
-        "Affected Families","Casualties","Damaged Houses","Urgency",
-    ]].rename(columns={
-        "disaster":"Disaster","rank":"Rank","barangay":"Barangay","score_pct":"Score (%)",
-    })
-
-    st.dataframe(
-        show_df.style.background_gradient(subset=["Score (%)"], cmap="Blues"),
-        use_container_width=True, height=480,
-    )
-    st.download_button(
-        "Download Full Rankings CSV",
-        data=show_df.to_csv(index=False).encode(),
-        file_name="wps_rankings.csv", mime="text/csv",
-    )
+    st.markdown("""
+    <div style="display:flex;align-items:center;gap:10px;padding:4px 0">
+        <div style="width:32px;height:32px;border-radius:50%;background:#1e293b;
+                    border:2px solid #334155;flex-shrink:0;display:flex;
+                    align-items:center;justify-content:center;
+                    font-size:11px;font-weight:700;color:#64748b">BC</div>
+        <div>
+            <div style="font-size:12px;font-weight:700;color:#fff">Baguio City EOC</div>
+            <div style="font-size:9px;color:#475569;text-transform:uppercase;letter-spacing:1px">Ops Terminal</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────
-# ASSESSMENT INPUT  — admin / LGU data entry form
+# HEADER BAR
 # ─────────────────────────────────────────────────────────────
 
-elif page == "Assessment Input":
+page = st.session_state.page
+page_subtitle = "Weighted Sum Model (WSM) Priority Scheduling for 128 Barangays"
+now = pd.Timestamp.now()
 
-    st.markdown("#### Assessment Input")
+hcol1, hcol2 = st.columns([4, 1])
+with hcol1:
+    st.markdown(f"## {page}")
+    st.markdown(f'<p class="section-label">{page_subtitle}</p>', unsafe_allow_html=True)
+with hcol2:
     st.markdown(
-        '<p class="section-label">Admin / LGU — add or update barangay disaster data</p>',
+        f'<div style="text-align:right;padding-top:8px">'
+        f'<div style="font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;'
+        f'letter-spacing:1.5px">Current Time</div>'
+        f'<div style="font-size:13px;font-weight:700;color:#0f172a">'
+        f'{now.strftime("%b %d, %Y")} | {now.strftime("%H:%M")}</div>'
+        f'</div>',
         unsafe_allow_html=True,
     )
 
-    # ── Add new entry form ────────────────────────────────────
-    with st.expander("Add New Assessment Entry", expanded=True):
+st.markdown("---")
 
-        # Populate dropdown with all known barangays from the base dataset
-        base_df    = load_base_df()
-        known_brgy = sorted(base_df["barangay"].unique().tolist())
-        known_dis  = sorted(base_df["disaster"].unique().tolist())
+# ─────────────────────────────────────────────────────────────
+# BUILD WORKING DATA
+# ─────────────────────────────────────────────────────────────
 
-        col_d, col_b = st.columns([2, 2])
+df       = get_df()
+df_final, perf_df, total_ms = run_wsm(df)
+
+# ═════════════════════════════════════════════════════════════
+#  DASHBOARD
+# ═════════════════════════════════════════════════════════════
+
+if page == "Dashboard":
+
+    # Hero card
+    top_row = df_final.iloc[0]
+    urg_lbl, urg_cls, urg_col = urgency(top_row["score"])
+    st.markdown(f"""
+    <div class="hero-card">
+        <div style="position:relative;z-index:1">
+            <h3>Emergency Response Dashboard</h3>
+            <p>Real-time disaster prioritization for 128 barangays of Baguio City.
+            Rankings are computed using the Weighted Sum Model based on reported casualties,
+            affected families, and damaged structures.</p>
+        </div>
+        <div style="display:flex;gap:12px;margin-top:20px;position:relative;z-index:1">
+            <div class="hero-badge">
+                <div class="label">Status</div>
+                <div class="value" style="color:#ef4444">OPERATIONAL</div>
+            </div>
+            <div class="hero-badge">
+                <div class="label">Last Update</div>
+                <div class="value">{now.strftime('%H:%M')}</div>
+            </div>
+        </div>
+        <div style="position:absolute;right:-60px;bottom:-60px;width:300px;height:300px;
+                    background:rgba(239,68,68,0.08);border-radius:50%;filter:blur(60px)"></div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("")
+
+    # Metric strip
+    c1, c2, c3, c4 = st.columns(4)
+    total_assessed = df_final["Barangay"].nunique()
+    c1.metric("Top Priority",        df_final.iloc[0]["Barangay"])
+    c2.metric("Total Affected",      f"{df['Affected Families'].sum():,}")
+    c3.metric("Total Casualties",    f"{df['Casualties'].sum():,}")
+    c4.metric("Queue Density",       f"{len(df_final)} records")
+
+    st.markdown("")
+
+    left_col, right_col = st.columns([2, 1])
+
+    # Top 5 list
+    with left_col:
+        st.markdown("**Critical Priority Areas (Top 5)**")
+        top5 = df_final.head(5)
+        for _, row in top5.iterrows():
+            ul, ucls, ucol = urgency(row["score"])
+            st.markdown(f"""
+            <div class="queue-row" style="cursor:default">
+                <div style="display:flex;align-items:center;gap:14px">
+                    <div style="width:38px;height:38px;border-radius:10px;background:#f8fafc;
+                                display:flex;align-items:center;justify-content:center;
+                                font-weight:800;font-size:13px;color:#64748b;flex-shrink:0">
+                        #{int(row['rank'])}
+                    </div>
+                    <div>
+                        <div style="font-weight:700;font-size:14px;color:#0f172a">{row['Barangay']}</div>
+                        <div style="font-size:11px;color:#94a3b8;margin-top:2px">
+                            {row['Disaster']} &nbsp;·&nbsp;
+                            {row['Affected Families']} families &nbsp;·&nbsp;
+                            {row['Casualties']} casualties
+                        </div>
+                    </div>
+                </div>
+                <div style="text-align:right">
+                    <span class="badge {ucls}">{ul}</span>
+                    <div style="font-family:'JetBrains Mono',monospace;font-size:1.2rem;
+                                font-weight:700;color:#0f172a;margin-top:4px">
+                        {row['score_pct']:.1f}%
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        if st.button("View full queue", key="goto_queue"):
+            st.session_state.page = "Priority Queue"
+            st.rerun()
+
+    with right_col:
+        total_brgy    = df["Barangay"].nunique()
+        assessed_n    = len(df_final[df_final["score"] > 0])
+        remaining     = max(0, 128 - total_brgy)
+        pct           = min(total_brgy / 128, 1.0)
+
+        st.markdown(f"""
+        <div class="ops-card" style="margin-bottom:12px">
+            <div style="font-weight:700;font-size:14px;color:#0f172a;margin-bottom:14px">Operational Status</div>
+            <div class="ops-row"><span class="ops-label">Total Barangays</span><span class="ops-val">128</span></div>
+            <div class="ops-row"><span class="ops-label">In Dataset</span><span class="ops-val" style="color:#2563eb">{total_brgy}</span></div>
+            <div class="ops-row"><span class="ops-label">Disaster Events</span><span class="ops-val">{df_final['Disaster'].nunique()}</span></div>
+            <div class="progress-bar-bg">
+                <div class="progress-bar-fill" style="width:{pct*100:.1f}%"></div>
+            </div>
+        </div>
+        <div class="action-card">
+            <h5>Quick Action Required</h5>
+            <p>Check the top-ranked barangays in the Priority Queue.
+            Recommendations are automatically updated as new data is entered.</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+# ═════════════════════════════════════════════════════════════
+#  ASSESSMENT INPUT
+# ═════════════════════════════════════════════════════════════
+
+elif page == "Assessment Input":
+
+    st.markdown(
+        '<div class="info-banner">Admin / LGU — add new barangay assessment data. '
+        'Entries are merged with the official dataset and rankings update immediately.</div>',
+        unsafe_allow_html=True,
+    )
+
+    base_df     = load_base()
+    known_brgy  = sorted(base_df["Barangay"].unique().tolist())
+    known_dis   = sorted(base_df["Disaster"].unique().tolist())
+
+    tab_manual, tab_batch = st.tabs(["Manual Entry", "Batch CSV Upload"])
+
+    # ── Manual Entry ─────────────────────────────────────────
+    with tab_manual:
+        st.markdown("")
+
+        col_d, col_b = st.columns(2)
         with col_d:
-            disaster_opt = st.selectbox(
+            d_choice = st.selectbox(
                 "Disaster Event",
-                options=["— select or type new —"] + known_dis,
-                key="form_disaster_select",
+                ["— select existing —"] + known_dis + ["+ Add new event"],
+                key="d_select",
             )
-            if disaster_opt == "— select or type new —":
-                disaster_val = st.text_input(
-                    "Or enter new disaster name",
-                    placeholder="e.g. TY Marce (2025)",
-                    key="form_disaster_new",
-                )
+            if d_choice == "+ Add new event":
+                d_val = st.text_input("New disaster name", placeholder="e.g. TY Marce (2025)", key="d_new")
+            elif d_choice == "— select existing —":
+                d_val = ""
             else:
-                disaster_val = disaster_opt
+                d_val = d_choice
 
         with col_b:
-            barangay_opt = st.selectbox(
+            b_choice = st.selectbox(
                 "Barangay",
-                options=["— select or type new —"] + known_brgy,
-                key="form_brgy_select",
+                ["— select existing —"] + known_brgy + ["+ Add new barangay"],
+                key="b_select",
             )
-            if barangay_opt == "— select or type new —":
-                barangay_val = st.text_input(
-                    "Or enter new barangay name",
-                    placeholder="e.g. New Barangay",
-                    key="form_brgy_new",
-                )
+            if b_choice == "+ Add new barangay":
+                b_val = st.text_input("New barangay name", key="b_new")
+            elif b_choice == "— select existing —":
+                b_val = ""
             else:
-                barangay_val = barangay_opt
+                b_val = b_choice
 
         st.markdown("")
         n1, n2, n3 = st.columns(3)
         with n1:
-            fam_val = st.number_input(
-                "Affected Families", min_value=0, value=0, step=1, key="form_fam"
-            )
+            fam = st.number_input("Affected Families", min_value=0, value=0, step=1, key="n_fam")
         with n2:
-            cas_val = st.number_input(
-                "Casualties", min_value=0, value=0, step=1, key="form_cas"
-            )
+            cas = st.number_input("Casualties",        min_value=0, value=0, step=1, key="n_cas")
         with n3:
-            house_val = st.number_input(
-                "Damaged Houses", min_value=0, value=0, step=1, key="form_house"
-            )
+            hse = st.number_input("Damaged Houses",    min_value=0, value=0, step=1, key="n_hse")
 
         st.markdown("")
-        submit = st.button("Add Entry", type="primary")
-
-        if submit:
-            d_clean = disaster_val.strip()
-            b_clean = barangay_val.strip()
+        if st.button("Add Assessment Entry", type="primary", key="add_entry"):
+            d_clean = d_val.strip()
+            b_clean = b_val.strip()
             if not d_clean or not b_clean:
                 st.error("Both Disaster Event and Barangay are required.")
             else:
                 st.session_state.added_entries.append({
-                    "disaster":          d_clean,
-                    "barangay":          b_clean,
-                    "Affected Families": int(fam_val),
-                    "Casualties":        int(cas_val),
-                    "Damaged Houses":    int(house_val),
+                    "Disaster":          d_clean,
+                    "Barangay":          b_clean,
+                    "Affected Families": int(fam),
+                    "Casualties":        int(cas),
+                    "Damaged Houses":    int(hse),
                 })
-                st.success(f"Entry added: {b_clean} / {d_clean}")
+                st.success(f"Entry added — {b_clean} / {d_clean}. Rankings updated.")
                 st.rerun()
 
-    # ── Show pending entries ──────────────────────────────────
-    if st.session_state.added_entries:
-        st.markdown("---")
-        st.markdown(f"#### Pending Entries &nbsp; <span style='color:#8b949e;font-size:13px;font-weight:400'>{len(st.session_state.added_entries)} record(s) queued</span>", unsafe_allow_html=True)
-
-        for i, entry in enumerate(st.session_state.added_entries):
-            urg = urgency_label(0)  # not yet scored; show after commit
-            ecol1, ecol2, ecol3, ecol4, ecol5, ecol6 = st.columns([3, 2, 1, 1, 1, 1])
-            ecol1.markdown(f"**{entry['barangay']}**")
-            ecol2.markdown(f"<span style='color:#8b949e;font-size:12px'>{entry['disaster']}</span>", unsafe_allow_html=True)
-            ecol3.markdown(f"<span style='color:#8b949e;font-size:11px'>Fam: {entry['Affected Families']}</span>", unsafe_allow_html=True)
-            ecol4.markdown(f"<span style='color:#8b949e;font-size:11px'>Cas: {entry['Casualties']}</span>", unsafe_allow_html=True)
-            ecol5.markdown(f"<span style='color:#8b949e;font-size:11px'>Hse: {entry['Damaged Houses']}</span>", unsafe_allow_html=True)
-            if ecol6.button("Remove", key=f"del_{i}"):
-                st.session_state.added_entries.pop(i)
-                st.rerun()
-
+    # ── Batch CSV ────────────────────────────────────────────
+    with tab_batch:
         st.markdown("")
-        bc1, bc2 = st.columns([1, 4])
-        with bc1:
-            if st.button("Clear All Entries", type="secondary"):
-                st.session_state.added_entries = []
-                st.rerun()
-        with bc2:
-            # Download pending as CSV
-            pending_df = pd.DataFrame(st.session_state.added_entries)
-            st.download_button(
-                "Download Pending Entries as CSV",
-                data=pending_df.to_csv(index=False).encode(),
-                file_name="wps_new_entries.csv", mime="text/csv",
-            )
-
-    else:
-        st.markdown("---")
-        st.markdown(
-            '<div style="color:#8b949e;font-size:13px;padding:16px 0">'
-            'No pending entries. Use the form above to add assessment data.</div>',
-            unsafe_allow_html=True,
-        )
-
-    # ── Upload a batch CSV of new entries ─────────────────────
-    st.markdown("---")
-    with st.expander("Batch Upload Assessment CSV"):
-        st.markdown(
-            '<p class="section-label">Upload multiple rows at once — will be merged with the existing dataset</p>',
-            unsafe_allow_html=True,
-        )
-        batch_file = st.file_uploader(
-            "Assessment batch CSV",
-            type=["csv"], key="batch_upload",
-            label_visibility="collapsed",
-        )
-        # Template download
-        template = pd.DataFrame([{
-            "disaster":"TY Marce (2025)","barangay":"Irisan",
-            "Affected Families":10,"Casualties":2,"Damaged Houses":5,
+        tmpl = pd.DataFrame([{
+            "Disaster": "TY Marce (2025)", "Barangay": "Irisan",
+            "Affected Families": 10, "Casualties": 2, "Damaged Houses": 5,
         }])
         st.download_button(
             "Download CSV template",
-            data=template.to_csv(index=False).encode(),
+            data=tmpl.to_csv(index=False).encode(),
             file_name="assessment_template.csv", mime="text/csv",
+        )
+        batch_file = st.file_uploader(
+            "Upload assessment CSV", type=["csv"],
+            key="batch_upload", label_visibility="collapsed",
         )
         if batch_file:
             try:
-                batch_df = pd.read_csv(batch_file)
-                col_map  = {}
-                for c in batch_df.columns:
+                bdf = pd.read_csv(batch_file)
+                # Normalise headers
+                remap = {}
+                for c in bdf.columns:
                     cl = c.strip().lower()
-                    if cl in ("baranagy","barangay"): col_map[c] = "barangay"
-                    elif cl == "disaster":            col_map[c] = "disaster"
-                batch_df.rename(columns=col_map, inplace=True)
+                    if cl in ("baranagy","barangay","name"): remap[c] = "Barangay"
+                    elif cl == "disaster":                   remap[c] = "Disaster"
+                bdf.rename(columns=remap, inplace=True)
                 for col in ["Affected Families","Casualties","Damaged Houses"]:
-                    if col in batch_df.columns:
-                        batch_df[col] = pd.to_numeric(batch_df[col], errors="coerce").fillna(0).astype(int)
-                st.dataframe(batch_df, use_container_width=True)
-                if st.button("Import Batch", type="primary"):
-                    for _, row in batch_df.iterrows():
+                    if col in bdf.columns:
+                        bdf[col] = pd.to_numeric(bdf[col], errors="coerce").fillna(0).astype(int)
+                st.dataframe(bdf, use_container_width=True)
+                if st.button("Import All Rows", type="primary", key="import_batch"):
+                    for _, row in bdf.iterrows():
                         st.session_state.added_entries.append({
-                            "disaster":          str(row.get("disaster","")).strip(),
-                            "barangay":          str(row.get("barangay","")).strip(),
+                            "Disaster":          str(row.get("Disaster","")).strip(),
+                            "Barangay":          str(row.get("Barangay","")).strip(),
                             "Affected Families": int(row.get("Affected Families", 0)),
                             "Casualties":        int(row.get("Casualties", 0)),
                             "Damaged Houses":    int(row.get("Damaged Houses", 0)),
                         })
-                    st.success(f"Imported {len(batch_df)} entries.")
+                    st.success(f"Imported {len(bdf)} entries.")
                     st.rerun()
             except Exception as e:
                 st.error(f"Could not read file: {e}")
 
-# ─────────────────────────────────────────────────────────────
-# PRIORITY QUEUE
-# ─────────────────────────────────────────────────────────────
+    # ── Pending entries list ──────────────────────────────────
+    if st.session_state.added_entries:
+        st.markdown("---")
+        st.markdown(
+            f"**Pending entries** &nbsp;"
+            f"<span style='color:#94a3b8;font-size:13px;font-weight:400'>"
+            f"{len(st.session_state.added_entries)} record(s) added this session</span>",
+            unsafe_allow_html=True,
+        )
+        for i, e in enumerate(st.session_state.added_entries):
+            c1, c2, c3, c4, c5, c6 = st.columns([3, 2, 1, 1, 1, 1])
+            c1.markdown(f"**{e['Barangay']}**")
+            c2.markdown(f"<span style='color:#94a3b8;font-size:12px'>{e['Disaster']}</span>", unsafe_allow_html=True)
+            c3.markdown(f"<span style='font-size:11px;color:#64748b'>Fam: {e['Affected Families']}</span>", unsafe_allow_html=True)
+            c4.markdown(f"<span style='font-size:11px;color:#64748b'>Cas: {e['Casualties']}</span>", unsafe_allow_html=True)
+            c5.markdown(f"<span style='font-size:11px;color:#64748b'>Hse: {e['Damaged Houses']}</span>", unsafe_allow_html=True)
+            if c6.button("Remove", key=f"rm_{i}"):
+                st.session_state.added_entries.pop(i)
+                st.rerun()
+
+        bc1, bc2 = st.columns([1, 5])
+        with bc1:
+            if st.button("Clear All", key="clear_all"):
+                st.session_state.added_entries = []
+                st.rerun()
+        with bc2:
+            pend = pd.DataFrame(st.session_state.added_entries)
+            st.download_button(
+                "Download pending entries",
+                data=pend.to_csv(index=False).encode(),
+                file_name="pending_entries.csv", mime="text/csv",
+            )
+
+# ═════════════════════════════════════════════════════════════
+#  PRIORITY QUEUE
+# ═════════════════════════════════════════════════════════════
 
 elif page == "Priority Queue":
 
-    st.markdown("#### Priority Queue")
+    col_head, col_dl = st.columns([4, 1])
+    with col_head:
+        st.markdown("**Disaster Response Priority Queue**")
+        st.markdown('<p class="section-label">Live ranked list of barangays waiting for emergency resources</p>', unsafe_allow_html=True)
+    with col_dl:
+        st.markdown("<br>", unsafe_allow_html=True)
+        all_export = df_final[["rank","Barangay","Disaster","score_pct",
+                                "Affected Families","Casualties","Damaged Houses"]].copy()
+        all_export.columns = ["Rank","Barangay","Disaster","Score (%)","Affected Families","Casualties","Damaged Houses"]
+        st.download_button("Export List", data=all_export.to_csv(index=False).encode(),
+                           file_name="priority_queue.csv", mime="text/csv")
 
-    selected_disaster = st.selectbox("Disaster event", df_final["disaster"].unique())
-    subset = df_final[df_final["disaster"] == selected_disaster].copy()
-    subset["Urgency"] = subset["score_pct"].apply(urgency_label)
+    # Filters
+    fc1, fc2, fc3 = st.columns([3, 1, 1])
+    with fc1:
+        search_q = st.text_input("", placeholder="Find barangay in queue...", key="q_search", label_visibility="collapsed")
+    with fc2:
+        dis_filter = st.selectbox("Disaster", ["All"] + list(df_final["Disaster"].unique()), key="q_dis", label_visibility="collapsed")
+    with fc3:
+        urg_filter = st.selectbox("Urgency", ["All","Highest","Urgent","Moderate","Low"], key="q_urg", label_visibility="collapsed")
 
-    s1, s2, s3, s4 = st.columns(4)
-    s1.metric("Barangays",         len(subset))
-    s2.metric("Total Casualties",  f"{subset['Casualties'].sum():,}")
-    s3.metric("Affected Families", f"{subset['Affected Families'].sum():,}")
-    s4.metric("Damaged Houses",    f"{subset['Damaged Houses'].sum():,}")
+    # Active count metrics
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Active in Queue",    len(df_final))
+    m2.metric("Disaster Events",    df_final["Disaster"].nunique())
+    m3.metric("Total Casualties",   f"{df_final['Casualties'].sum():,}")
+    m4.metric("Total Affected Fam", f"{df_final['Affected Families'].sum():,}")
+
     st.markdown("")
 
-    export_cols = {
-        "rank":"Rank","barangay":"Barangay","score_pct":"Score (%)",
-        "Affected Families":"Affected Families","Casualties":"Casualties",
-        "Damaged Houses":"Damaged Houses",
-        "norm_families":"Norm Families","norm_casualties":"Norm Casualties",
-        "norm_damaged":"Norm Damaged","Urgency":"Urgency",
-    }
-    renamed = subset[list(export_cols)].rename(columns=export_cols)
-    st.dataframe(
-        renamed.style.background_gradient(subset=["Score (%)"], cmap="Blues"),
-        use_container_width=True, height=520,
-    )
-    st.download_button(
-        "Download Queue CSV",
-        data=renamed.to_csv(index=False).encode(),
-        file_name=f"queue_{selected_disaster.replace(' ','_')}.csv",
-        mime="text/csv",
-    )
+    # Apply filters
+    view = df_final.copy()
+    if search_q:
+        view = view[view["Barangay"].str.lower().str.contains(search_q.lower())]
+    if dis_filter != "All":
+        view = view[view["Disaster"] == dis_filter]
+    if urg_filter != "All":
+        view = view[view["score"].apply(lambda s: urgency(s)[0]) == urg_filter]
 
-# ─────────────────────────────────────────────────────────────
-# ANALYTICS
-# ─────────────────────────────────────────────────────────────
+    if view.empty:
+        st.info("No records match the current filter.")
+    else:
+        for _, row in view.iterrows():
+            ul, ucls, ucol = urgency(row["score"])
+            rec = recommendation(row["score"])
+            with st.expander(
+                f"#{int(row['rank'])}  {row['Barangay']}  —  {row['Disaster']}  |  Score: {row['score_pct']:.1f}%  ·  {ul}",
+                expanded=False,
+            ):
+                d1, d2, d3, d4 = st.columns(4)
+                d1.metric("Affected Families", row["Affected Families"])
+                d2.metric("Casualties",        row["Casualties"])
+                d3.metric("Damaged Houses",    row["Damaged Houses"])
+                d4.metric("Priority Score",    f"{row['score_pct']:.2f}%")
+                st.markdown(
+                    f"Normalized — Families: `{row['norm_fam']:.3f}` &nbsp;·&nbsp;"
+                    f"Casualties: `{row['norm_cas']:.3f}` &nbsp;·&nbsp;"
+                    f"Houses: `{row['norm_hse']:.3f}`  \n"
+                    f"**Recommendation:** {rec}",
+                )
+
+# ═════════════════════════════════════════════════════════════
+#  ANALYTICS
+# ═════════════════════════════════════════════════════════════
 
 elif page == "Analytics":
 
-    st.markdown("#### Analytics")
+    sel_dis = st.selectbox("Select Disaster Event", df_final["Disaster"].unique(), key="an_dis")
+    sub     = df_final[df_final["Disaster"] == sel_dis].copy()
+    sub["Urgency"] = sub["score"].apply(lambda s: urgency(s)[0])
+    top10   = sub.nsmallest(10, "rank")
 
-    selected_disaster = st.selectbox("Disaster event", df_final["disaster"].unique())
-    top10    = df_final[df_final["disaster"] == selected_disaster].nsmallest(10, "rank")
-    full_sub = df_final[df_final["disaster"] == selected_disaster].copy()
-    full_sub["Urgency"] = full_sub["score_pct"].apply(urgency_label)
-
+    # Row 1 – horizontal bar
     fig1 = px.bar(
-        top10.sort_values("score_pct"), x="score_pct", y="barangay", orientation="h",
+        top10.sort_values("score_pct"), x="score_pct", y="Barangay", orientation="h",
         title="Priority Score — Top 10 Barangays",
-        color="score_pct", color_continuous_scale=BLUE_SCALE,
-        labels={"score_pct":"Score (%)","barangay":""},
+        color="score_pct", color_continuous_scale=BLUES,
+        labels={"score_pct":"Score (%)","Barangay":""},
     )
-    fig1.update_layout(**PLOTLY_BASE)
-    fig1.update_coloraxes(showscale=False)
+    fig1.update_layout(**PBASE); fig1.update_coloraxes(showscale=False)
     st.plotly_chart(fig1, use_container_width=True)
 
-    c1, c2 = st.columns(2)
-    with c1:
-        fig2 = px.pie(
-            top10, names="barangay", values="Affected Families",
-            title="Affected Families Distribution",
-            color_discrete_sequence=px.colors.sequential.Blues_r, hole=0.45,
-        )
-        fig2.update_layout(**PLOTLY_BASE)
-        fig2.update_traces(textfont_color="#e6edf3")
+    # Row 2 – pie + casualties bar
+    r1, r2 = st.columns(2)
+    with r1:
+        fig2 = px.pie(top10, names="Barangay", values="Affected Families",
+                      title="Affected Families Distribution",
+                      color_discrete_sequence=px.colors.sequential.Blues_r, hole=0.45)
+        fig2.update_layout(**PBASE)
         st.plotly_chart(fig2, use_container_width=True)
-    with c2:
-        fig3 = px.bar(
-            top10, x="barangay", y="Casualties",
-            title="Casualties per Barangay",
-            color="Casualties", color_continuous_scale=BLUE_SCALE,
-            labels={"barangay":""},
-        )
-        fig3.update_layout(**PLOTLY_BASE, xaxis_tickangle=-35)
-        fig3.update_coloraxes(showscale=False)
+    with r2:
+        fig3 = px.bar(top10, x="Barangay", y="Casualties",
+                      title="Casualties per Barangay",
+                      color="Casualties", color_continuous_scale=BLUES, labels={"Barangay":""})
+        fig3.update_layout(**PBASE, xaxis_tickangle=-35); fig3.update_coloraxes(showscale=False)
         st.plotly_chart(fig3, use_container_width=True)
 
-    melt = top10.melt(
-        id_vars="barangay",
-        value_vars=["norm_families","norm_casualties","norm_damaged"],
-        var_name="Criterion", value_name="Normalized Score",
-    )
-    melt["Criterion"] = melt["Criterion"].map({
-        "norm_families":"Affected Families",
-        "norm_casualties":"Casualties",
-        "norm_damaged":"Damaged Houses",
-    })
-    fig4 = px.bar(
-        melt, x="barangay", y="Normalized Score", color="Criterion",
-        title="Normalized Score Breakdown per Barangay",
-        barmode="stack",
-        color_discrete_sequence=["#58a6ff","#3fb950","#d29922"],
-        labels={"barangay":""},
-    )
-    fig4.update_layout(**PLOTLY_BASE, xaxis_tickangle=-35)
+    # Row 3 – stacked normalized breakdown
+    melt = top10.melt(id_vars="Barangay",
+                      value_vars=["norm_fam","norm_cas","norm_hse"],
+                      var_name="Criterion", value_name="Normalized Score")
+    melt["Criterion"] = melt["Criterion"].map(
+        {"norm_fam":"Affected Families","norm_cas":"Casualties","norm_hse":"Damaged Houses"})
+    fig4 = px.bar(melt, x="Barangay", y="Normalized Score", color="Criterion",
+                  title="Normalized Score Breakdown", barmode="stack",
+                  color_discrete_sequence=["#3b82f6","#22c55e","#f59e0b"],
+                  labels={"Barangay":""})
+    fig4.update_layout(**PBASE, xaxis_tickangle=-35)
     st.plotly_chart(fig4, use_container_width=True)
 
-    fig5 = px.scatter(
-        full_sub, x="Casualties", y="score_pct",
-        size="Affected Families", color="Urgency",
-        hover_name="barangay",
-        color_discrete_map={"Critical":"#f85149","High":"#e3b341","Moderate":"#58a6ff","Low":"#8b949e"},
-        title="Priority Score vs Casualties  (bubble size = affected families)",
-        labels={"score_pct":"Score (%)"},
-    )
-    fig5.update_layout(**PLOTLY_BASE)
+    # Row 4 – scatter
+    fig5 = px.scatter(sub, x="Casualties", y="score_pct",
+                      size="Affected Families", color="Urgency",
+                      hover_name="Barangay",
+                      color_discrete_map={"Highest":"#dc2626","Urgent":"#ea580c",
+                                          "Moderate":"#3b82f6","Low":"#94a3b8"},
+                      title="Priority Score vs Casualties (bubble = affected families)",
+                      labels={"score_pct":"Score (%)"})
+    fig5.update_layout(**PBASE)
     st.plotly_chart(fig5, use_container_width=True)
 
-# ─────────────────────────────────────────────────────────────
-# EVALUATION
-# ─────────────────────────────────────────────────────────────
+# ═════════════════════════════════════════════════════════════
+#  ALGORITHM ASSESSMENT (Evaluation)
+# ═════════════════════════════════════════════════════════════
 
-elif page == "Evaluation":
+elif page == "Algorithm Assessment":
 
-    st.markdown("#### System Evaluation")
-    tab_jac, tab_perf = st.tabs(["Jaccard Index","Computational Efficiency"])
+    tab_j, tab_p = st.tabs(["Jaccard Index", "Computational Efficiency"])
 
-    with tab_jac:
-        st.markdown(
-            '<p class="section-label">Top-k agreement between WPS and single-criterion baselines</p>',
-            unsafe_allow_html=True,
-        )
-        K_VALUES  = [3, 5]
-        BASELINES = {
-            "Families only":   "Affected Families",
-            "Casualties only": "Casualties",
-            "Houses only":     "Damaged Houses",
-        }
-        baseline_results = {}
-        for b_label, b_col in BASELINES.items():
-            groups = []
-            for d_name, grp in df.groupby("disaster"):
-                g = grp.copy().sort_values(b_col, ascending=False)
-                g["rank"] = range(1, len(g) + 1)
-                groups.append(g)
-            baseline_results[b_label] = pd.concat(groups, ignore_index=True)
+    with tab_j:
+        st.markdown('<p class="section-label">Top-k agreement between WPS and single-criterion baselines</p>', unsafe_allow_html=True)
 
-        records = []
-        for k in K_VALUES:
-            for d_name in df_final["disaster"].unique():
-                d_sub = df_final[df_final["disaster"] == d_name]
-                if len(d_sub) < k:
-                    continue
-                wps_topk = set(d_sub.nsmallest(k,"rank")["barangay"])
-                for b_label, b_df in baseline_results.items():
-                    base_topk = set(b_df[b_df["disaster"]==d_name].nsmallest(k,"rank")["barangay"])
-                    records.append({
-                        "Disaster": d_name, "k": k,
-                        "Baseline": b_label,
-                        "Jaccard":  round(jaccard(wps_topk, base_topk), 4),
-                    })
+        K_VALS    = [3, 5]
+        BASELINES = {"Families only":"Affected Families",
+                     "Casualties only":"Casualties",
+                     "Houses only":"Damaged Houses"}
+        b_results = {}
+        for bl, bc in BASELINES.items():
+            grps = []
+            for dn, g in df.groupby("Disaster"):
+                g2 = g.copy().sort_values(bc, ascending=False)
+                g2["rank"] = range(1, len(g2)+1)
+                grps.append(g2)
+            b_results[bl] = pd.concat(grps, ignore_index=True)
 
-        jac_df = pd.DataFrame(records)
-        st.dataframe(jac_df, use_container_width=True)
+        recs = []
+        for k in K_VALS:
+            for dn in df_final["Disaster"].unique():
+                ds = df_final[df_final["Disaster"]==dn]
+                if len(ds) < k: continue
+                wtop = set(ds.nsmallest(k,"rank")["Barangay"])
+                for bl, bdf2 in b_results.items():
+                    btop = set(bdf2[bdf2["Disaster"]==dn].nsmallest(k,"rank")["Barangay"])
+                    recs.append({"Disaster":dn,"k":k,"Baseline":bl,
+                                 "Jaccard":round(jaccard(wtop,btop),4)})
+        jdf = pd.DataFrame(recs)
+        st.dataframe(jdf, use_container_width=True)
 
-        fig_j = px.bar(
-            jac_df, x="Baseline", y="Jaccard", color="k", barmode="group",
-            title="Top-k Agreement with Single-Criterion Baselines",
-            color_discrete_sequence=["#58a6ff","#3fb950"],
-            labels={"Jaccard":"Jaccard Index","k":"k"},
-        )
-        fig_j.update_layout(**PLOTLY_BASE)
-        st.plotly_chart(fig_j, use_container_width=True)
+        figj = px.bar(jdf, x="Baseline", y="Jaccard", color="k", barmode="group",
+                      title="Top-k Agreement with Baselines",
+                      color_discrete_sequence=["#3b82f6","#22c55e"],
+                      labels={"Jaccard":"Jaccard Index"})
+        figj.update_layout(**PBASE)
+        st.plotly_chart(figj, use_container_width=True)
 
-    with tab_perf:
-        st.markdown(
-            '<p class="section-label">WSM processing time per disaster group</p>',
-            unsafe_allow_html=True,
-        )
-        perf_display = perf_df.copy()
-        perf_display["ms / record"] = (
-            perf_display["Time (ms)"] / perf_display["Records"]
-        ).round(6)
-        st.dataframe(perf_display, use_container_width=True)
-
-        fig_p = px.bar(
-            perf_display, x="Disaster", y="ms / record",
-            title="Processing Time per Record (ms)",
-            color="ms / record", color_continuous_scale=BLUE_SCALE,
-        )
-        fig_p.update_layout(**PLOTLY_BASE, xaxis_tickangle=-30)
-        fig_p.update_coloraxes(showscale=False)
-        st.plotly_chart(fig_p, use_container_width=True)
-
+    with tab_p:
+        st.markdown('<p class="section-label">WSM processing time per disaster group</p>', unsafe_allow_html=True)
+        pdf = perf_df.copy()
+        pdf["ms / record"] = (pdf["Time (ms)"] / pdf["Records"]).round(6)
+        st.dataframe(pdf, use_container_width=True)
+        figp = px.bar(pdf, x="Disaster", y="ms / record",
+                      title="Processing Time per Record (ms)",
+                      color="ms / record", color_continuous_scale=BLUES)
+        figp.update_layout(**PBASE, xaxis_tickangle=-30); figp.update_coloraxes(showscale=False)
+        st.plotly_chart(figp, use_container_width=True)
         p1, p2 = st.columns(2)
         p1.metric("Total processing time", f"{total_ms:.4f} ms")
         p2.metric("Records processed",     len(df_final))
 
-# ─────────────────────────────────────────────────────────────
-# HOW IT WORKS
-# ─────────────────────────────────────────────────────────────
+# ═════════════════════════════════════════════════════════════
+#  HOW WPS WORKS
+# ═════════════════════════════════════════════════════════════
 
-elif page == "How It Works":
+elif page == "How WPS Works":
 
-    st.markdown("#### Algorithm Reference")
-
-    col_a, col_b = st.columns(2)
-    with col_a:
+    ca, cb = st.columns(2)
+    with ca:
         st.markdown("""
 **Weighted Sum Model (WSM)**
 
@@ -1018,10 +1104,10 @@ Each barangay receives a priority score from three equally weighted criteria:
 Score = (Norm_Families + Norm_Casualties + Norm_Houses) / 3
 ```
 
-Barangays are ranked in descending order within each disaster group.
+Barangays are ranked descending within each disaster group.
 Ties are resolved by raw casualty count.
         """)
-    with col_b:
+    with cb:
         st.markdown("""
 **Min-Max Normalization**
 
@@ -1031,17 +1117,17 @@ Raw values are scaled to [0, 1] so criteria with different units stay comparable
 Norm(x) = (x − min) / (max − min)
 ```
 
-If all values in a group are equal, 0.5 is assigned (neutral).
+When all values in a group are equal, 0.5 is assigned (neutral score).
         """)
 
     st.markdown("---")
     st.markdown("**Urgency Thresholds**")
     st.dataframe(
         pd.DataFrame([
-            {"Score Range":"≥ 70%",     "Level":"Critical", "Response Target":"Within 24 hours"},
-            {"Score Range":"40% – 69%", "Level":"High",     "Response Target":"24 – 48 hours"},
-            {"Score Range":"10% – 39%", "Level":"Moderate", "Response Target":"2 – 3 days"},
-            {"Score Range":"< 10%",     "Level":"Low",      "Response Target":"Monitoring"},
+            {"Score Range":"≥ 70%","Level":"Highest","Response":"Immediate (within 24 hours)"},
+            {"Score Range":"40–69%","Level":"Urgent","Response":"24–48 hours"},
+            {"Score Range":"10–39%","Level":"Moderate","Response":"2–3 days"},
+            {"Score Range":"< 10%","Level":"Low","Response":"Monitoring"},
         ]),
         use_container_width=True, hide_index=True,
     )
@@ -1052,20 +1138,19 @@ If all values in a group are equal, 0.5 is assigned (neutral).
 
 | Column | Type | Notes |
 |---|---|---|
-| `disaster` | string | Event name, e.g. "TY Carina (2024)" |
-| `barangay` | string | Barangay name (typo "Baranagy" also accepted) |
+| `Disaster` | string | Event name, e.g. "TY Carina (2024)" |
+| `Barangay` | string | Barangay name ("Baranagy" typo also accepted) |
 | `Affected Families` | integer | Displaced or affected family count |
 | `Casualties` | integer | Casualty count |
 | `Damaged Houses` | integer | Structurally damaged house count |
 
-Each disaster group is normalized independently.
+Each disaster group is normalized independently. New entries can be added via **Assessment Input**.
     """)
 
     st.markdown("---")
-    st.markdown("**Download the official dataset**")
-    base_df = load_base_df()
+    base_export = load_base()
     st.download_button(
-        "Download full_dataset.csv",
-        data=base_df.rename(columns={"barangay":"Barangay","disaster":"Disaster"}).to_csv(index=False).encode(),
-        file_name="full_dataset.csv", mime="text/csv",
+        "Download official dataset (CSV)",
+        data=base_export.to_csv(index=False).encode(),
+        file_name="baguio_disaster_dataset.csv", mime="text/csv",
     )
